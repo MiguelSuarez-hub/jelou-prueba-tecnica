@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: Orchestrator Lambda
+  version: 1.0.0
+  description: Orquestador de flujo (crear y confirmar orden)
+servers:
+  - url: http://localhost:3000/dev
+paths:
+  /orchestrator/create-and-confirm-order:
+    post:
+      summary: Crear y confirmar orden en un solo flujo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorInput"
+      responses:
+        "201":
+          description: Orden creada y confirmada
+components:
+  schemas:
+    OrchestratorInput:
+      type: object
+      required: [customer_id, items]
+      properties:
+        customer_id: { type: integer }
+        items:
+          type: array
+          items:
+            type: object
+            required: [product_id, qty]
+            properties:
+              product_id: { type: integer }
+              qty: { type: integer }

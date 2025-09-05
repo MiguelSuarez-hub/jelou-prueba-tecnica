@@ -1,0 +1,164 @@
+openapi: 3.0.3
+info:
+  title: Orders API
+  version: 1.0.0
+  description: API para gestionar ordenes y productos
+servers:
+  - url: http://localhost:3002
+paths:
+  /products:
+    get:
+      summary: Buscar productos
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lista de productos
+    post:
+      summary: Crear producto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Producto creado
+  /products/{id}:
+    get:
+      summary: Obtener producto
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Producto encontrado
+    patch:
+      summary: Actualizar precio/stock
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+      responses:
+        "200":
+          description: Producto actualizado
+  /orders:
+    post:
+      summary: Crear orden
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Orden creada
+    get:
+      summary: Listar órdenes
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Lista de órdenes
+  /orders/{id}:
+    get:
+      summary: Obtener orden con items
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Orden encontrada
+  /orders/{id}/confirm:
+    post:
+      summary: Confirmar orden (idempotente)
+      parameters:
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Orden confirmada
+  /orders/{id}/cancel:
+    post:
+      summary: Cancelar orden
+      responses:
+        "200":
+          description: Orden cancelada
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id: { type: integer }
+        sku: { type: string }
+        name: { type: string }
+        price_cents: { type: integer }
+        stock: { type: integer }
+    ProductInput:
+      type: object
+      required: [sku, name, price_cents, stock]
+      properties:
+        sku: { type: string }
+        name: { type: string }
+        price_cents: { type: integer }
+        stock: { type: integer }
+    ProductUpdate:
+      type: object
+      properties:
+        price_cents: { type: integer }
+        stock: { type: integer }
+    OrderInput:
+      type: object
+      required: [customer_id, items]
+      properties:
+        customer_id: { type: integer }
+        items:
+          type: array
+          items:
+            type: object
+            required: [product_id, qty]
+            properties:
+              product_id: { type: integer }
+              qty: { type: integer }
