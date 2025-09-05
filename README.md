@@ -7,16 +7,16 @@ Incluye dos APIs (`Customers API`, `Orders API`), un **Lambda Orchestrator** y u
 
 ## 📂 Estructura del monorepo
 
-.
-├── customers-api/ # API de clientes
-├── orders-api/ # API de productos y pedidos
-├── lambda-orchestrator/ # Lambda que orquesta creación y confirmación de pedidos
-├── db/
-│ ├── schema.sql # Definición de tablas
-│ └── seed.sql # Datos iniciales
-├── docker-compose.yml # DB + APIs
-├── docker-compose.swagger.yml # Swagger UI
-└── README.md
+
+├── customers-api/ # API de clientes <br>
+├── orders-api/ # API de productos y pedidos<br>
+├── lambda-orchestrator/ # Lambda que orquesta creación y confirmación de pedidos<br>
+├── db/<br>
+│ ├── schema.sql # Definición de tablas <br>
+│ └── seed.sql # Datos iniciales <br>
+├── docker-compose.yml # DB + APIs <br>
+├── docker-compose.swagger.yml # Swagger UI <br>
+└── README.md # Documentación del proyecto
 
 ## 🏗️ Arquitectura
 
