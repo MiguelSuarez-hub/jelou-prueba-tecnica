@@ -1,5 +1,5 @@
 import { Router } from "express";
-import  pool  from "../db.js";
+import pool from "../db.js";
 import axios from "axios";
 
 const router = Router();
@@ -45,10 +45,10 @@ router.post("/", async (req, res) => {
       });
 
       // Descontar stock
-      await conn.query(
-        "UPDATE products SET stock = stock - ? WHERE id = ?",
-        [item.qty, product.id]
-      );
+      await conn.query("UPDATE products SET stock = stock - ? WHERE id = ?", [
+        item.qty,
+        product.id,
+      ]);
     }
 
     // 3️⃣ Insertar orden
@@ -123,6 +123,191 @@ router.get("/", async (req, res) => {
 
   const [orders] = await pool.query(sql, params);
   res.json(orders);
+});
+
+router.post("/:id/confirm", async (req, res) => {
+  const orderId = parseInt(req.params.id, 10);
+  const idempotencyKey = req.header("X-Idempotency-Key");
+
+  if (!idempotencyKey) {
+    return res
+      .status(400)
+      .json({ error: "X-Idempotency-Key header is required" });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1. Revisar si ya existe la key en DB
+    const [existing] = await conn.query(
+      "SELECT response_body FROM idempotency_keys WHERE idempotency_key = ? AND target_type = 'order_confirm'",
+      [idempotencyKey]
+    );
+
+    if (existing.length > 0) {
+      // Ya existe -> devolver la misma respuesta guardada
+      await conn.commit();
+      return res.json(existing[0].response_body);
+    }
+
+    // 2. Validar la orden
+    const [orders] = await conn.query(
+      "SELECT id, status FROM orders WHERE id = ?",
+      [orderId]
+    );
+    if (orders.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const order = orders[0];
+    if (order.status === "CONFIRMED") {
+      // Guardamos idempotencia igual para consistencia
+      const response = { id: order.id, status: "CONFIRMED" };
+      await conn.query(
+        `INSERT INTO idempotency_keys (idempotency_key, target_type, target_id, status, response_body, expires_at)
+         VALUES (?, 'order_confirm', ?, 'completed', ?, DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [idempotencyKey, orderId, JSON.stringify(response)]
+      );
+      await conn.commit();
+      return res.json(response);
+    }
+
+    if (order.status !== "CREATED") {
+      await conn.rollback();
+      return res
+        .status(400)
+        .json({ error: "Only CREATED orders can be confirmed" });
+    }
+
+    // 3. Confirmar la orden
+    await conn.query("UPDATE orders SET status = 'CONFIRMED' WHERE id = ?", [
+      orderId,
+    ]);
+
+    // Obtener la orden con items y totales
+    const [orderItems] = await conn.query(
+      `SELECT oi.product_id, oi.qty, oi.unit_price_cents, oi.subtotal_cents
+       FROM order_items oi WHERE oi.order_id = ?`,
+      [orderId]
+    );
+
+    const [updated] = await conn.query(
+      "SELECT id, status, total_cents FROM orders WHERE id = ?",
+      [orderId]
+    );
+    const response = {
+      id: updated[0].id,
+      status: updated[0].status,
+      total_cents: updated[0].total_cents,
+      items: orderItems,
+    };
+
+    // 4. Guardar en idempotency_keys
+    await conn.query(
+      `INSERT INTO idempotency_keys (idempotency_key, target_type, target_id, status, response_body, expires_at)
+       VALUES (?, 'order_confirm', ?, 'completed', ?, DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+      [idempotencyKey, orderId, JSON.stringify(response)]
+    );
+
+    await conn.commit();
+    res.json(response);
+  } catch (err) {
+    await conn.rollback();
+    console.error("Error confirming order:", err);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/:id/cancel", async (req, res) => {
+  const { id } = req.params;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [orders] = await conn.query(
+      "SELECT id, status, created_at FROM orders WHERE id = ? FOR UPDATE",
+      [id]
+    );
+
+    if (orders.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const order = orders[0];
+
+    if (order.status === "CANCELED") {
+      await conn.rollback();
+      return res.status(400).json({ error: "Order already canceled" });
+    }
+
+    if (order.status === "CREATED") {
+      // Restaurar stock
+      const [items] = await conn.query(
+        "SELECT product_id, qty FROM order_items WHERE order_id = ?",
+        [id]
+      );
+
+      for (const item of items) {
+        await conn.query("UPDATE products SET stock = stock + ? WHERE id = ?", [
+          item.qty,
+          item.product_id,
+        ]);
+      }
+
+      await conn.query("UPDATE orders SET status = 'CANCELED' WHERE id = ?", [
+        id,
+      ]);
+      await conn.commit();
+      return res.json({ id: order.id, status: "CANCELED" });
+    }
+
+    if (order.status === "CONFIRMED") {
+      const createdAt = new Date(order.created_at);
+      const now = new Date();
+      const diffMinutes = (now - createdAt) / (1000 * 60);
+
+      if (diffMinutes > 10) {
+        await conn.rollback();
+        return res.status(400).json({
+          error: "Confirmed order can only be canceled within 10 minutes",
+        });
+      }
+
+      // Restaurar stock
+      const [items] = await conn.query(
+        "SELECT product_id, qty FROM order_items WHERE order_id = ?",
+        [id]
+      );
+
+      for (const item of items) {
+        await conn.query("UPDATE products SET stock = stock + ? WHERE id = ?", [
+          item.qty,
+          item.product_id,
+        ]);
+      }
+
+      await conn.query("UPDATE orders SET status = 'CANCELED' WHERE id = ?", [
+        id,
+      ]);
+      await conn.commit();
+      return res.json({ id: order.id, status: "CANCELED" });
+    }
+
+    await conn.rollback();
+    res.status(400).json({ error: "Invalid order status" });
+  } catch (err) {
+    await conn.rollback();
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    conn.release();
+  }
 });
 
 export default router;
