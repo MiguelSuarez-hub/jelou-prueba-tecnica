@@ -4,6 +4,9 @@ provider:
   name: aws
   runtime: nodejs22.x
   region: us-east-1
+  environment:
+    CUSTOMERS_API_BASE: http://localhost:3001
+    ORDERS_API_BASE: http://localhost:3002
 
 functions:
   orchestrator:
@@ -12,6 +15,12 @@ functions:
       - http:
           path: orchestrator/create-and-confirm-order
           method: post
+          cors: true
 
 plugins:
   - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3000  # Puerto donde correrá tu Lambda local
+    host: 0.0.0.0
