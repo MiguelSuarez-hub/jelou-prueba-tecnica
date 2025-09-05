@@ -55,6 +55,12 @@ Incluye dos APIs (`Customers API`, `Orders API`), un **Lambda Orchestrator** y u
 
 ---
 
+## 💻 Clonar el repositorio 
+
+```bash
+git clone https://github.com/MiguelSuarez-hub/jelou-prueba-tecnica.git
+```
+
 ## 🚀 Levantar el entorno local
 
 ### 1. Copiar variables de entorno
@@ -66,7 +72,7 @@ Cópialo a `.env`:
 cp customers-api/.env.example customers-api/.env
 cp orders-api/.env.example orders-api/.env
 cp lambda-orchestrator/.env.example lambda-orchestrator/.env
-````
+```
 
 ### 2. Levantar DB + APIs
 
